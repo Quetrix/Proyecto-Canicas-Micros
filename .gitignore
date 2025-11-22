@@ -15,6 +15,7 @@ __pycache__/
 # Ignorar archivos del sistema
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Ignorar configuraciones locales de IDE (opcional, a veces conviene subir el .project)
 .settings/
