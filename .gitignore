@@ -24,3 +24,20 @@ desktop.ini
 .log
 .metadata/.log
 .metadata/
+
+# Ignore all Eclipse/IDE workspace data
+# -------------------------
+.metadata/
+
+# Ignore local temporary files created during programming/debugging
+Debug/
+Release/
+build/
+*.bak
+*.launch
+.log
+
+# Ignore auto-generated STM32 files not needed for version control
+# (Most of these are already in your stm32-firmware/ folder, but double-check)
+.MX_PFP
+.MX_history
