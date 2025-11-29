@@ -20,3 +20,6 @@ desktop.ini
 # Ignorar configuraciones locales de IDE (opcional, a veces conviene subir el .project)
 .settings/
 .vscode/
+
+.log
+.metadata/.log
