@@ -8,7 +8,7 @@ La configuración se basa en la compatibilidad con los headers Arduino de la pla
 
 Para ubicar los pines en la placa, consulte el diagrama de pinout:
 
-![Pinout de la placa Nucleo-F446RE](pinout.jpg)
+![Pinout de la placa Nucleo-F446RE](pinout.png)
 
 ## 2. Mapeo de Pines
 
