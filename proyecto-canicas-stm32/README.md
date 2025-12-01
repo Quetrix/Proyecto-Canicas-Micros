@@ -20,19 +20,27 @@ Los 12 pines del microcontrolador están configurados como **GPIO Output** y con
 
 ## 3. Comunicación Serial (UART / RS-232)
 
-[cite_start]La comunicación entre el Microprocesador (Raspberry Pi) y el Microcontrolador (STM32) se realiza a través del protocolo **Serial Asíncrono (UART)**, cumpliendo con el requisito del proyecto de usar RS-232[cite: 101].
+El STM32 está configurado para escuchar órdenes asíncronas de la Raspberry Pi (RPi) a través del cable USB (Virtual COM Port).
 
-| Parámetro | Configuración del STM32 | Función |
+### 3.1. Configuración de Conexión (Lado RPi)
+Para abrir la comunicación desde Python (usando la librería `pySerial`), se deben usar los siguientes parámetros:
+
+* **Puerto:** `/dev/ttyACM0` (Verificar con `ls /dev/ttyACM*` en la terminal).
+* **Baud Rate (Velocidad):** `115200`
+* **Permisos:** El usuario `micropenes` debe tener permisos para usar el grupo `dialout`.
+
+### 3.2. Protocolo de Comandos (Lado STM32)
+
+El microcontrolador espera un comando en el formato **[Comando][Pasos]**, **TERMINADO OBLIGATORIAMENTE con un salto de línea (`\n`)**.
+
+| Comando | Formato | Descripción |
 | :--- | :--- | :--- |
-| **Protocolo** | USART2 (VCP) | Comunicación bidireccional por el cable USB. |
-| **Baud Rate** | 115200 | Velocidad de transferencia de datos. |
-| **Pines** | PA2 (TX), PA3 (RX) | Pasan a través del puente ST-LINK V2.1. |
-| **Terminador** | Carácter `\n` (Line Feed) | El STM32 procesa la orden solo después de recibir este carácter. |
+| **Horizontal** | `H` o `h` + número | Mueve el motor Horizontal. El valor positivo es Derecha, el negativo es Izquierda. |
+| **Vertical** | `V` o `v` + número | Mueve los motores Verticales (M1 y M2) de forma sincronizada. El valor positivo es Arriba (Subir), el negativo es Abajo (Bajar). |
+| **Ejemplo** | `H2048` | Mueve el motor Horizontal 2048 pasos hacia la derecha. |
 
-### Protocolo de Comando
-El STM32 espera comandos en el formato **[Comando][Pasos]**, terminado con `\n`.
-* **Horizontal:** `H` o `h` (Ej: `H2048`, `h-1000`)
-* **Vertical:** `V` o `v` (Ej: `V1000`, `v-500`)
+**Nota Crítica:** El carácter `\n` es la señal que el STM32 usa para saber que el comando ha finalizado. En Python, esto se logra enviando la cadena seguida de `\n` (e.g., `ser.write("H2048\n".encode('utf-8'))`).
+
 
 ## 4. Consideraciones Eléctricas
 
