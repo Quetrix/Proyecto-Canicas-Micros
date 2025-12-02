@@ -315,11 +315,11 @@ class MarbleInterfaceFinal:
         for w in self.frame_lista_rutas.winfo_children(): 
             if isinstance(w, tk.Frame): w.destroy()
         
-        for k, camino in sorted(self.rutas_programadas.items()):
+        # QUITAMOS "sorted()" para ver el orden real de ejecución en la pantalla
+        for k, camino in self.rutas_programadas.items():
             f = tk.Frame(self.frame_lista_rutas, bg="#334155")
             f.pack(fill="x", pady=2)
             
-            # Formato "S1: 1->4->D"
             txt_camino = "->".join(map(str, camino))
             lbl_text = f"{k}: {txt_camino}"
             
@@ -389,8 +389,17 @@ class MarbleInterfaceFinal:
         if not self.ruta_temp or self.ruta_temp[-1] != "Destino":
             messagebox.showerror("Error", "Debe terminar en Destino")
             return
+        
         inicio = self.ruta_temp[0]
+        
+        # LOGICA DE ORDEN:
+        # Si la ruta ya existe, la borramos primero.
+        # Al insertarla de nuevo, Python la coloca al FINAL del diccionario.
+        if inicio in self.rutas_programadas:
+            del self.rutas_programadas[inicio]
+            
         self.rutas_programadas[inicio] = self.ruta_temp[1:]
+        
         self.refrescar_lista_rutas()
         self.reset_ruta_builder()
 
@@ -405,18 +414,18 @@ class MarbleInterfaceFinal:
         threading.Thread(target=self._proceso_secuencia).start()
 
     def _proceso_secuencia(self):
-        orden = ["S1", "S2", "S3"]
-        for inicio in orden:
-            if inicio not in self.rutas_programadas: continue
+        # Iteramos directamente sobre el diccionario para respetar el orden de inserción
+        # (S1 -> S2 -> S3 o como haya decidido el usuario)
+        for inicio, camino in self.rutas_programadas.items():
             
-            camino = self.rutas_programadas[inicio]
             self._proceso_retorno(inicio)
             
-            # Pedir Carga (Bloqueante con OK)
+            # Pedir Carga
             evt = threading.Event()
             self.root.after(0, lambda: self._show_info_wait("Carga", f"Coloque canica en {inicio}", evt))
             evt.wait()
 
+            # Ejecutar Ruta
             for paso in camino:
                 self._proceso_mover(paso, None)
             
