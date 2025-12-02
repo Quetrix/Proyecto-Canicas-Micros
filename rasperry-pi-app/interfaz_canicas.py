@@ -11,8 +11,11 @@ BAUD_RATE = 115200
 
 # --- CONFIGURACION FISICA ---
 # Pasos calibrados para 28BYJ-48 (Ajustar segun tu driver)
-STEPS_H = 2048  
-STEPS_V = 2048  
+#STEPS_H = 2048  
+#STEPS_V = 2048/2  
+
+STEPS_H = 1536
+STEPS_V = 1408
 
 class MarbleInterfaceFinal:
     def __init__(self, root):
@@ -204,7 +207,8 @@ class MarbleInterfaceFinal:
 
     def mover_libre(self, eje, direccion):
         # Mueve sin actualizar la logica de posicion (solo hardware)
-        pasos = STEPS_V if eje == "V" else STEPS_H
+        # "Se mueve en octavos de paso regular (1/8)"
+        pasos = STEPS_V/8 if eje == "V" else STEPS_H/8
         signo = "" if direccion > 0 else "-" # V positivo es subir, V negativo bajar (segun logica previa)
         
         cmd = f"{eje}{signo}{pasos}"
