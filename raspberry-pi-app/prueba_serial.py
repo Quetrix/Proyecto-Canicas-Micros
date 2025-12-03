@@ -39,6 +39,7 @@ print("--- TEST DE COMANDOS STM32 ---")
 print("Protocolo:")
 print("  - Motores: H[pasos] o V[pasos]. Ej: H4096, V-2000")
 print("  - Servo:   S[angulo]. Ej: S45, S0, S90")
+print(" CUIDADO: Si el servo esta en la estructura, moverlo entre 25 y 65 grados")
 
 while True:
     try:
