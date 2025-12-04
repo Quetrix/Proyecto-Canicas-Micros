@@ -5,6 +5,7 @@ import time
 import threading
 
 # --- CONFIGURACION SERIAL ---
+# Ajusta esto segun tu entorno (COMx en Windows, /dev/ttyACM0 en Raspberry)
 PORT_NAME = '/dev/ttyACM0'
 BAUD_RATE = 115200
 
@@ -19,7 +20,7 @@ CALIB_FINE_V = int(STEPS_V / 8)
 class MarbleInterfaceFinal:
     def __init__(self, root):
         self.root = root
-        self.root.title("SISTEMA DE CONTROL V5.1 - NIVELACION")
+        self.root.title("SISTEMA DE CONTROL V5.2 - CALIBRACION PRO")
         self.root.geometry("1024x600")
         self.root.configure(bg="#1e293b") 
 
@@ -140,7 +141,7 @@ class MarbleInterfaceFinal:
 
         header = tk.Frame(self.root, bg="#0f172a", height=60)
         header.pack(fill="x")
-        tk.Label(header, text="CONTROL DE CANICAS V5.1", font=("Arial", 20, "bold"), 
+        tk.Label(header, text="CONTROL DE CANICAS V5.2", font=("Arial", 20, "bold"), 
                  bg="#0f172a", fg="#e2e8f0").pack(side="left", padx=20, pady=10)
         
         tk.Button(header, text="RESET TOTAL", bg="#dc2626", fg="white", font=("Arial", 10, "bold"),
@@ -171,7 +172,7 @@ class MarbleInterfaceFinal:
         tk.Label(top, text=titulo, font=("Arial", 14, "bold"), bg="#334155", fg="#facc15").pack(side="left", padx=10)
         tk.Button(top, text="MENU", bg="#64748b", fg="white", command=self.mostrar_menu_principal).pack(side="right", padx=10, pady=5)
 
-        self.panel_izq = tk.Frame(self.main_frame, bg="#1e293b", width=450) # Mas ancho para controles extra
+        self.panel_izq = tk.Frame(self.main_frame, bg="#1e293b", width=500) # Mas ancho para los controles
         self.panel_izq.pack(side="left", fill="y", padx=10)
         
         if mostrar_grid:
@@ -190,52 +191,65 @@ class MarbleInterfaceFinal:
     def iniciar_modo_calibracion(self):
         self.construir_pantalla_base("CALIBRACION Y MANTENIMIENTO", mostrar_grid=False)
         
-        # --- 1. Control General (Existente) ---
-        tk.Label(self.panel_izq, text="MOVIMIENTO GENERAL", bg="#1e293b", fg="#fbbf24", font=("Arial", 10, "bold")).pack(pady=(10,5))
-        frame_gros = tk.Frame(self.panel_izq, bg="#1e293b")
-        frame_gros.pack()
-        
-        tk.Button(frame_gros, text="▲", command=lambda: self.mover_calib("V", 1, "FULL"), bg="#475569", fg="white", width=4).grid(row=0, column=1)
-        tk.Button(frame_gros, text="◀", command=lambda: self.mover_calib("H", -1, "FULL"), bg="#475569", fg="white", width=4).grid(row=1, column=0, padx=5)
-        tk.Button(frame_gros, text="▶", command=lambda: self.mover_calib("H", 1, "FULL"), bg="#475569", fg="white", width=4).grid(row=1, column=2, padx=5)
-        tk.Button(frame_gros, text="▼", command=lambda: self.mover_calib("V", -1, "FULL"), bg="#475569", fg="white", width=4).grid(row=2, column=1)
-
-        # --- 2. Control Servo (NUEVO) ---
-        tk.Label(self.panel_izq, text="CONTROL SERVO (VOLCADO)", bg="#1e293b", fg="#fbbf24", font=("Arial", 10, "bold")).pack(pady=(20,5))
+        # --- 1. Control Servo ---
+        tk.Label(self.panel_izq, text="CONTROL SERVO (VOLCADO)", bg="#1e293b", fg="#fbbf24", font=("Arial", 10, "bold")).pack(pady=(10,5))
         frame_servo = tk.Frame(self.panel_izq, bg="#1e293b")
         frame_servo.pack()
-        
         tk.Button(frame_servo, text="ABRIR (25°)", command=lambda: self.enviar_comando("S25"), bg="#d97706", fg="white", width=12).pack(side="left", padx=5)
         tk.Button(frame_servo, text="CERRAR (65°)", command=lambda: self.enviar_comando("S65"), bg="#059669", fg="white", width=12).pack(side="left", padx=5)
 
-        # --- 3. Nivelacion Individual (NUEVO) ---
-        tk.Label(self.panel_izq, text="NIVELACION VERTICAL (1/8 PASO)", bg="#1e293b", fg="#fbbf24", font=("Arial", 10, "bold")).pack(pady=(20,5))
-        frame_niv = tk.Frame(self.panel_izq, bg="#1e293b")
-        frame_niv.pack()
+        # --- 2. Movimiento General (1 Nivel Completo) ---
+        tk.Label(self.panel_izq, text="MOVIMIENTO GENERAL (1 NIVEL)", bg="#1e293b", fg="#fbbf24", font=("Arial", 10, "bold")).pack(pady=(20,5))
+        frame_gros = tk.Frame(self.panel_izq, bg="#1e293b")
+        frame_gros.pack()
         
-        # Columna Izquierda (M1)
-        tk.Label(frame_niv, text="M1 (IZQ)", bg="#1e293b", fg="#94a3b8", font=("Arial", 8)).grid(row=0, column=0)
-        tk.Button(frame_niv, text="▲", command=lambda: self.mover_individual("L", 1), bg="#3b82f6", fg="white", width=4).grid(row=1, column=0, pady=2, padx=10)
-        tk.Button(frame_niv, text="▼", command=lambda: self.mover_individual("L", -1), bg="#3b82f6", fg="white", width=4).grid(row=2, column=0, pady=2, padx=10)
+        tk.Button(frame_gros, text="▲", command=lambda: self.mover_calib("V", 1, "FULL"), bg="#475569", fg="white", width=4, height=2).grid(row=0, column=1)
+        tk.Button(frame_gros, text="◀", command=lambda: self.mover_calib("H", -1, "FULL"), bg="#475569", fg="white", width=4, height=2).grid(row=1, column=0, padx=5)
+        tk.Button(frame_gros, text="▶", command=lambda: self.mover_calib("H", 1, "FULL"), bg="#475569", fg="white", width=4, height=2).grid(row=1, column=2, padx=5)
+        tk.Button(frame_gros, text="▼", command=lambda: self.mover_calib("V", -1, "FULL"), bg="#475569", fg="white", width=4, height=2).grid(row=2, column=1)
 
-        # Columna Derecha (M2)
-        tk.Label(frame_niv, text="M2 (DER)", bg="#1e293b", fg="#94a3b8", font=("Arial", 8)).grid(row=0, column=1)
-        tk.Button(frame_niv, text="▲", command=lambda: self.mover_individual("R", 1), bg="#3b82f6", fg="white", width=4).grid(row=1, column=1, pady=2, padx=10)
-        tk.Button(frame_niv, text="▼", command=lambda: self.mover_individual("R", -1), bg="#3b82f6", fg="white", width=4).grid(row=2, column=1, pady=2, padx=10)
+        # --- 3. Ajuste Fino (1/8 de Nivel) ---
+        tk.Label(self.panel_izq, text="AJUSTE FINO (1/8 NIVEL) - INDIVIDUAL", bg="#1e293b", fg="#fbbf24", font=("Arial", 10, "bold")).pack(pady=(20,5))
+        frame_fino = tk.Frame(self.panel_izq, bg="#1e293b")
+        frame_fino.pack()
+        
+        # Columna: M2 (IZQUIERDA FISICA) -> Controla Motor 2 (Comando R)
+        frame_m2 = tk.Frame(frame_fino, bg="#334155", padx=5, pady=5)
+        frame_m2.grid(row=0, column=0, padx=5)
+        tk.Label(frame_m2, text="M2 (IZQ)", bg="#334155", fg="white", font=("Arial", 8, "bold")).pack()
+        tk.Button(frame_m2, text="▲", command=lambda: self.mover_individual("R", 1), bg="#3b82f6", fg="white", width=3).pack(pady=2)
+        tk.Button(frame_m2, text="▼", command=lambda: self.mover_individual("R", -1), bg="#3b82f6", fg="white", width=3).pack(pady=2)
+
+        # Columna: Horizontal Fino
+        frame_h = tk.Frame(frame_fino, bg="#334155", padx=5, pady=5)
+        frame_h.grid(row=0, column=1, padx=5)
+        tk.Label(frame_h, text="HORIZ", bg="#334155", fg="white", font=("Arial", 8, "bold")).pack()
+        tk.Button(frame_h, text="◀", command=lambda: self.mover_calib("H", -1, "FINE"), bg="#8b5cf6", fg="white", width=3).pack(pady=2)
+        tk.Button(frame_h, text="▶", command=lambda: self.mover_calib("H", 1, "FINE"), bg="#8b5cf6", fg="white", width=3).pack(pady=2)
+
+        # Columna: M1 (DERECHA FISICA) -> Controla Motor 1 (Comando L)
+        frame_m1 = tk.Frame(frame_fino, bg="#334155", padx=5, pady=5)
+        frame_m1.grid(row=0, column=2, padx=5)
+        tk.Label(frame_m1, text="M1 (DER)", bg="#334155", fg="white", font=("Arial", 8, "bold")).pack()
+        tk.Button(frame_m1, text="▲", command=lambda: self.mover_individual("L", 1), bg="#3b82f6", fg="white", width=3).pack(pady=2)
+        tk.Button(frame_m1, text="▼", command=lambda: self.mover_individual("L", -1), bg="#3b82f6", fg="white", width=3).pack(pady=2)
 
         # --- Confirmacion ---
         tk.Button(self.panel_izq, text="CONFIRMAR POSICION S1", bg="#10b981", fg="white", font=("Arial", 11, "bold"),
-                  command=self.confirmar_s1).pack(pady=30, fill="x")
+                  command=self.confirmar_s1).pack(pady=20, fill="x")
 
     def mover_calib(self, eje, dir, tipo):
-        pasos = CALIB_FINE_V if tipo == "FINE" else STEPS_V if eje == "V" else STEPS_H
+        pasos = CALIB_FINE_V if tipo == "FINE" else STEPS_V
+        if eje == "H" and tipo == "FINE": pasos = CALIB_FINE_H
+        elif eje == "H" and tipo == "FULL": pasos = STEPS_H
+            
         signo = "" if dir > 0 else "-"
         self.enviar_comando(f"{eje}{signo}{pasos}")
 
     def mover_individual(self, motor, dir):
-        # motor: "L" (Left/M1) o "R" (Right/M2)
-        # dir: 1 (Subir), -1 (Bajar)
-        pasos = CALIB_FINE_V # Usamos pasos finos (1/8) para nivelar
+        # M1 (DER) -> Envia 'L' (Motor 1)
+        # M2 (IZQ) -> Envia 'R' (Motor 2)
+        pasos = CALIB_FINE_V
         signo = "" if dir > 0 else "-"
         self.enviar_comando(f"{motor}{signo}{pasos}")
 
@@ -246,7 +260,6 @@ class MarbleInterfaceFinal:
             messagebox.showinfo("Listo", "Sistema calibrado en S1")
 
     # --- MODO 1: MANUAL ---
-    # (Sin cambios mayores, solo asegurando que usa rutina_volcado_y_retorno)
 
     def iniciar_modo_manual(self):
         self.construir_pantalla_base("MODO MANUAL")
@@ -298,9 +311,9 @@ class MarbleInterfaceFinal:
         messagebox.showinfo("Llegada", "Canica en Destino.\nEl sistema volcará la canasta ahora.")
         
         print("Volcando canasta...")
-        self.enviar_comando("S25")  # ABRIR (25 grados)
+        self.enviar_comando("S25")
         time.sleep(1.5)             
-        self.enviar_comando("S65")  # CERRAR (65 grados)
+        self.enviar_comando("S65")
         time.sleep(1.0)             
         
         self.contador_estanon += 1
@@ -309,8 +322,6 @@ class MarbleInterfaceFinal:
         self.iniciar_retorno_thread("S1")
 
     # --- MODO 2: PROGRAMADO ---
-    # (Sin cambios, usa rutina_volcado_y_retorno implicita en logica thread si se desea, 
-    # pero tu v5 original tenia logica separada en _proceso_secuencia. La actualizamos aqui para consistencia)
 
     def iniciar_modo_programado(self):
         self.ruta_temp = []
@@ -427,7 +438,6 @@ class MarbleInterfaceFinal:
             for paso in camino:
                 self._proceso_mover(paso, None)
             
-            # Volcado automatico
             self.root.after(0, lambda: messagebox.showinfo("Llegada", "Volcando canica..."))
             time.sleep(1.0)
             self.enviar_comando("S25")
@@ -499,7 +509,6 @@ class MarbleInterfaceFinal:
             self.root.after(0, self.actualizar_grid_visual)
             time.sleep(2.0 * filas_a_bajar) 
             
-            # Volcar
             self.enviar_comando("S25")
             time.sleep(1.5)
             self.enviar_comando("S65")
