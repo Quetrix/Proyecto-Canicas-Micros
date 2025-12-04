@@ -9,7 +9,6 @@ PORT_NAME = '/dev/ttyACM0'
 BAUD_RATE = 115200
 
 # --- CONFIGURACION FISICA ---
-# Pasos ajustados a multiplos de 8
 STEPS_H = 1536
 STEPS_V = 1408
 
@@ -20,7 +19,7 @@ CALIB_FINE_V = int(STEPS_V / 8)
 class MarbleInterfaceFinal:
     def __init__(self, root):
         self.root = root
-        self.root.title("SISTEMA DE CONTROL V5.0")
+        self.root.title("SISTEMA DE CONTROL V5.1 - NIVELACION")
         self.root.geometry("1024x600")
         self.root.configure(bg="#1e293b") 
 
@@ -28,20 +27,19 @@ class MarbleInterfaceFinal:
         self.ser = None
         self.connect_serial()
         
-        # Variable critica de posicion
         self.posicion_actual = "S1"
         self.columna_virtual_destino = 1 
         
         self.rutas_programadas = {} 
         self.contador_estanon = 0
         
-        # Mapa Logico (Fila, Columna)
+        # Mapa Logico
         self.mapa_coords = {
             "S1": (0,0), "S2": (0,1), "S3": (0,2),
             1: (1,0), 2: (1,1), 3: (1,2),
             4: (2,0), 5: (2,1), 6: (2,2),
             7: (3,0), 8: (3,1), 9: (3,2),
-            "Destino": (4,1) # Logico base
+            "Destino": (4,1)
         }
 
         self.setup_ui()
@@ -70,7 +68,6 @@ class MarbleInterfaceFinal:
     def calcular_comando(self, origen, destino):
         r1, c1 = self.mapa_coords[origen]
         
-        # Manejo especial Destino
         if origen == "Destino":
             r1 = 4
             c1 = self.columna_virtual_destino
@@ -93,10 +90,9 @@ class MarbleInterfaceFinal:
         if diff_c == 1 and diff_r == 0: return f"H{STEPS_H}"   # Derecha
         if diff_c == -1 and diff_r == 0: return f"H-{STEPS_H}"  # Izquierda
         
-        # Si es un salto vertical mayor a 1 (ej: Reset), calculamos pasos totales
         if diff_c == 0 and diff_r > 1:
             pasos_total = diff_r * STEPS_V
-            return f"V-{pasos_total}" # Bajar N filas
+            return f"V-{pasos_total}" 
 
         return None 
 
@@ -135,7 +131,6 @@ class MarbleInterfaceFinal:
             time.sleep(2.5) 
             
             if callback:
-                # Ejecutar callback en el hilo principal si es UI, o directo si es logica
                 self.root.after(0, callback)
 
     # --- INTERFAZ UI ---
@@ -145,7 +140,7 @@ class MarbleInterfaceFinal:
 
         header = tk.Frame(self.root, bg="#0f172a", height=60)
         header.pack(fill="x")
-        tk.Label(header, text="CONTROL DE CANICAS", font=("Arial", 20, "bold"), 
+        tk.Label(header, text="CONTROL DE CANICAS V5.1", font=("Arial", 20, "bold"), 
                  bg="#0f172a", fg="#e2e8f0").pack(side="left", padx=20, pady=10)
         
         tk.Button(header, text="RESET TOTAL", bg="#dc2626", fg="white", font=("Arial", 10, "bold"),
@@ -166,7 +161,7 @@ class MarbleInterfaceFinal:
         
         tk.Button(self.main_frame, text="1. MODO MANUAL", command=self.iniciar_modo_manual, **btn_opts).pack(pady=10)
         tk.Button(self.main_frame, text="2. MODO PROGRAMADO", command=self.iniciar_modo_programado, **btn_opts).pack(pady=10)
-        tk.Button(self.main_frame, text="3. CALIBRACION", command=self.iniciar_modo_calibracion, **btn_opts).pack(pady=10)
+        tk.Button(self.main_frame, text="3. CALIBRACION Y NIVELACION", command=self.iniciar_modo_calibracion, **btn_opts).pack(pady=10)
 
     def construir_pantalla_base(self, titulo, mostrar_grid=True):
         for w in self.main_frame.winfo_children(): w.destroy()
@@ -176,7 +171,7 @@ class MarbleInterfaceFinal:
         tk.Label(top, text=titulo, font=("Arial", 14, "bold"), bg="#334155", fg="#facc15").pack(side="left", padx=10)
         tk.Button(top, text="MENU", bg="#64748b", fg="white", command=self.mostrar_menu_principal).pack(side="right", padx=10, pady=5)
 
-        self.panel_izq = tk.Frame(self.main_frame, bg="#1e293b", width=400)
+        self.panel_izq = tk.Frame(self.main_frame, bg="#1e293b", width=450) # Mas ancho para controles extra
         self.panel_izq.pack(side="left", fill="y", padx=10)
         
         if mostrar_grid:
@@ -190,27 +185,13 @@ class MarbleInterfaceFinal:
                                     font=("Arial", 16, "bold"), bg="#1e293b", fg="#facc15")
         self.lbl_estanon.pack(side="bottom", pady=20)
 
-    # --- MODO 3: CALIBRACION DUAL ---
+    # --- MODO 3: CALIBRACION AVANZADA ---
 
     def iniciar_modo_calibracion(self):
         self.construir_pantalla_base("CALIBRACION Y MANTENIMIENTO", mostrar_grid=False)
         
-        lbl = tk.Label(self.panel_izq, text="Use estos controles para ajustar la posicion.\nAl finalizar, confirme que esta en S1.", 
-                       bg="#1e293b", fg="#94a3b8", justify="left")
-        lbl.pack(pady=10)
-
-        # Seccion Fina
-        tk.Label(self.panel_izq, text="AJUSTE FINO (1/8 PASO)", bg="#1e293b", fg="#fbbf24", font=("Arial", 10, "bold")).pack(pady=(20,5))
-        frame_fino = tk.Frame(self.panel_izq, bg="#1e293b")
-        frame_fino.pack()
-        
-        tk.Button(frame_fino, text="▲", command=lambda: self.mover_calib("V", 1, "FINE"), bg="#3b82f6", fg="white", width=4).grid(row=0, column=1)
-        tk.Button(frame_fino, text="◀", command=lambda: self.mover_calib("H", -1, "FINE"), bg="#3b82f6", fg="white", width=4).grid(row=1, column=0, padx=5)
-        tk.Button(frame_fino, text="▶", command=lambda: self.mover_calib("H", 1, "FINE"), bg="#3b82f6", fg="white", width=4).grid(row=1, column=2, padx=5)
-        tk.Button(frame_fino, text="▼", command=lambda: self.mover_calib("V", -1, "FINE"), bg="#3b82f6", fg="white", width=4).grid(row=2, column=1)
-
-        # Seccion Completa
-        tk.Label(self.panel_izq, text="MOVIMIENTO GENERAL (1 CELDA)", bg="#1e293b", fg="#fbbf24", font=("Arial", 10, "bold")).pack(pady=(20,5))
+        # --- 1. Control General (Existente) ---
+        tk.Label(self.panel_izq, text="MOVIMIENTO GENERAL", bg="#1e293b", fg="#fbbf24", font=("Arial", 10, "bold")).pack(pady=(10,5))
         frame_gros = tk.Frame(self.panel_izq, bg="#1e293b")
         frame_gros.pack()
         
@@ -219,17 +200,44 @@ class MarbleInterfaceFinal:
         tk.Button(frame_gros, text="▶", command=lambda: self.mover_calib("H", 1, "FULL"), bg="#475569", fg="white", width=4).grid(row=1, column=2, padx=5)
         tk.Button(frame_gros, text="▼", command=lambda: self.mover_calib("V", -1, "FULL"), bg="#475569", fg="white", width=4).grid(row=2, column=1)
 
+        # --- 2. Control Servo (NUEVO) ---
+        tk.Label(self.panel_izq, text="CONTROL SERVO (VOLCADO)", bg="#1e293b", fg="#fbbf24", font=("Arial", 10, "bold")).pack(pady=(20,5))
+        frame_servo = tk.Frame(self.panel_izq, bg="#1e293b")
+        frame_servo.pack()
+        
+        tk.Button(frame_servo, text="ABRIR (25°)", command=lambda: self.enviar_comando("S25"), bg="#d97706", fg="white", width=12).pack(side="left", padx=5)
+        tk.Button(frame_servo, text="CERRAR (65°)", command=lambda: self.enviar_comando("S65"), bg="#059669", fg="white", width=12).pack(side="left", padx=5)
+
+        # --- 3. Nivelacion Individual (NUEVO) ---
+        tk.Label(self.panel_izq, text="NIVELACION VERTICAL (1/8 PASO)", bg="#1e293b", fg="#fbbf24", font=("Arial", 10, "bold")).pack(pady=(20,5))
+        frame_niv = tk.Frame(self.panel_izq, bg="#1e293b")
+        frame_niv.pack()
+        
+        # Columna Izquierda (M1)
+        tk.Label(frame_niv, text="M1 (IZQ)", bg="#1e293b", fg="#94a3b8", font=("Arial", 8)).grid(row=0, column=0)
+        tk.Button(frame_niv, text="▲", command=lambda: self.mover_individual("L", 1), bg="#3b82f6", fg="white", width=4).grid(row=1, column=0, pady=2, padx=10)
+        tk.Button(frame_niv, text="▼", command=lambda: self.mover_individual("L", -1), bg="#3b82f6", fg="white", width=4).grid(row=2, column=0, pady=2, padx=10)
+
+        # Columna Derecha (M2)
+        tk.Label(frame_niv, text="M2 (DER)", bg="#1e293b", fg="#94a3b8", font=("Arial", 8)).grid(row=0, column=1)
+        tk.Button(frame_niv, text="▲", command=lambda: self.mover_individual("R", 1), bg="#3b82f6", fg="white", width=4).grid(row=1, column=1, pady=2, padx=10)
+        tk.Button(frame_niv, text="▼", command=lambda: self.mover_individual("R", -1), bg="#3b82f6", fg="white", width=4).grid(row=2, column=1, pady=2, padx=10)
+
+        # --- Confirmacion ---
         tk.Button(self.panel_izq, text="CONFIRMAR POSICION S1", bg="#10b981", fg="white", font=("Arial", 11, "bold"),
                   command=self.confirmar_s1).pack(pady=30, fill="x")
 
     def mover_calib(self, eje, dir, tipo):
-        if tipo == "FINE":
-            pasos = CALIB_FINE_V if eje == "V" else CALIB_FINE_H
-        else:
-            pasos = STEPS_V if eje == "V" else STEPS_H
-            
+        pasos = CALIB_FINE_V if tipo == "FINE" else STEPS_V if eje == "V" else STEPS_H
         signo = "" if dir > 0 else "-"
         self.enviar_comando(f"{eje}{signo}{pasos}")
+
+    def mover_individual(self, motor, dir):
+        # motor: "L" (Left/M1) o "R" (Right/M2)
+        # dir: 1 (Subir), -1 (Bajar)
+        pasos = CALIB_FINE_V # Usamos pasos finos (1/8) para nivelar
+        signo = "" if dir > 0 else "-"
+        self.enviar_comando(f"{motor}{signo}{pasos}")
 
     def confirmar_s1(self):
         if messagebox.askyesno("Confirmar", "¿Posicion actual es S1?"):
@@ -238,6 +246,7 @@ class MarbleInterfaceFinal:
             messagebox.showinfo("Listo", "Sistema calibrado en S1")
 
     # --- MODO 1: MANUAL ---
+    # (Sin cambios mayores, solo asegurando que usa rutina_volcado_y_retorno)
 
     def iniciar_modo_manual(self):
         self.construir_pantalla_base("MODO MANUAL")
@@ -258,7 +267,6 @@ class MarbleInterfaceFinal:
                       bg="#0ea5e9", fg="white", width=5).pack(side="left", padx=2)
 
     def accion_manual_click(self, direccion):
-        # 1. Validacion sincrona (en hilo principal) para que salga el popup
         r, c = self.mapa_coords[self.posicion_actual]
         if self.posicion_actual == "Destino":
             r = 4
@@ -276,7 +284,6 @@ class MarbleInterfaceFinal:
         if destino:
             valido, msg = self.validar_movimiento(self.posicion_actual, destino)
             if valido:
-                # 2. Si es valido, lanzamos hilo
                 self.ejecutar_movimiento_thread(destino, callback=self.check_fin_recorrido_manual)
             else:
                 messagebox.showwarning("Movimiento Invalido", msg)
@@ -284,28 +291,26 @@ class MarbleInterfaceFinal:
             messagebox.showwarning("Error", "No existe zona en esa direccion")
 
     def check_fin_recorrido_manual(self):
-        # Se llama despues de que el movimiento termina
         if self.posicion_actual == "Destino":
             self.rutina_volcado_y_retorno()
 
     def rutina_volcado_y_retorno(self):
-        # 1. Popup bloqueante
         messagebox.showinfo("Llegada", "Canica en Destino.\nEl sistema volcará la canasta ahora.")
         
-        # 2. Secuencia de Volcado con los NUEVOS ANGULOS
         print("Volcando canasta...")
         self.enviar_comando("S25")  # ABRIR (25 grados)
-        time.sleep(1.5)             # Esperar a que caiga la canica
+        time.sleep(1.5)             
         self.enviar_comando("S65")  # CERRAR (65 grados)
-        time.sleep(1.0)             # Esperar a que se cierre bien
+        time.sleep(1.0)             
         
-        # 3. Actualizar contador y regresar
         self.contador_estanon += 1
         self.lbl_estanon.config(text=f"Estanon: {self.contador_estanon}")
         
         self.iniciar_retorno_thread("S1")
 
     # --- MODO 2: PROGRAMADO ---
+    # (Sin cambios, usa rutina_volcado_y_retorno implicita en logica thread si se desea, 
+    # pero tu v5 original tenia logica separada en _proceso_secuencia. La actualizamos aqui para consistencia)
 
     def iniciar_modo_programado(self):
         self.ruta_temp = []
@@ -322,7 +327,6 @@ class MarbleInterfaceFinal:
         for w in self.frame_lista_rutas.winfo_children(): 
             if isinstance(w, tk.Frame): w.destroy()
         
-        # QUITAMOS "sorted()" para ver el orden real de ejecución en la pantalla
         for k, camino in self.rutas_programadas.items():
             f = tk.Frame(self.frame_lista_rutas, bg="#334155")
             f.pack(fill="x", pady=2)
@@ -364,7 +368,6 @@ class MarbleInterfaceFinal:
         tk.Button(self.panel_izq, text="INICIAR RECORRIDO", command=self.iniciar_secuencia_thread,
                   bg="#d946ef", fg="white", font=("Arial", 12, "bold")).pack(fill="x", pady=20)
 
-    # ... (Metodos borrar_ruta, reset_ruta_builder, agregar_paso, undo_paso igual que v4) ...
     def borrar_ruta(self, key):
         if messagebox.askyesno("Borrar", f"¿Eliminar ruta {key}?"):
             del self.rutas_programadas[key]
@@ -396,17 +399,9 @@ class MarbleInterfaceFinal:
         if not self.ruta_temp or self.ruta_temp[-1] != "Destino":
             messagebox.showerror("Error", "Debe terminar en Destino")
             return
-        
         inicio = self.ruta_temp[0]
-        
-        # LOGICA DE ORDEN:
-        # Si la ruta ya existe, la borramos primero.
-        # Al insertarla de nuevo, Python la coloca al FINAL del diccionario.
-        if inicio in self.rutas_programadas:
-            del self.rutas_programadas[inicio]
-            
+        if inicio in self.rutas_programadas: del self.rutas_programadas[inicio]
         self.rutas_programadas[inicio] = self.ruta_temp[1:]
-        
         self.refrescar_lista_rutas()
         self.reset_ruta_builder()
 
@@ -421,25 +416,24 @@ class MarbleInterfaceFinal:
         threading.Thread(target=self._proceso_secuencia).start()
 
     def _proceso_secuencia(self):
-        # Iteramos directamente sobre el diccionario para respetar el orden de inserción
-        # (S1 -> S2 -> S3 o como haya decidido el usuario)
         for inicio, camino in self.rutas_programadas.items():
             
             self._proceso_retorno(inicio)
             
-            # Pedir Carga
             evt = threading.Event()
             self.root.after(0, lambda: self._show_info_wait("Carga", f"Coloque canica en {inicio}", evt))
             evt.wait()
 
-            # Ejecutar Ruta
             for paso in camino:
                 self._proceso_mover(paso, None)
             
-            # Pedir Volcado
-            evt_dump = threading.Event()
-            self.root.after(0, lambda: self._show_info_wait("Llegada", "Vacie la canasta", evt_dump))
-            evt_dump.wait()
+            # Volcado automatico
+            self.root.after(0, lambda: messagebox.showinfo("Llegada", "Volcando canica..."))
+            time.sleep(1.0)
+            self.enviar_comando("S25")
+            time.sleep(1.5)
+            self.enviar_comando("S65")
+            time.sleep(1.0)
             
             self.contador_estanon += 1
             self.root.after(0, lambda: self.lbl_estanon.config(text=f"Estanon: {self.contador_estanon}"))
@@ -495,24 +489,20 @@ class MarbleInterfaceFinal:
         threading.Thread(target=self._proceso_reset).start()
 
     def _proceso_reset(self):
-        # Calculo matematico de distancia
         r_actual, _ = self.mapa_coords[self.posicion_actual] if self.posicion_actual != "Destino" else (4,1)
-        
         filas_a_bajar = 4 - r_actual
         
         if filas_a_bajar > 0:
             pasos_total = filas_a_bajar * STEPS_V
             self.enviar_comando(f"V-{pasos_total}")
-            
             self.posicion_actual = "Destino"
             self.root.after(0, self.actualizar_grid_visual)
+            time.sleep(2.0 * filas_a_bajar) 
             
-            tiempo_espera = 2.0 * filas_a_bajar
-            time.sleep(tiempo_espera) 
-            
-            evt = threading.Event()
-            self.root.after(0, lambda: self._show_info_wait("Reset", "Vacie estanon", evt))
-            evt.wait()
+            # Volcar
+            self.enviar_comando("S25")
+            time.sleep(1.5)
+            self.enviar_comando("S65")
 
         self._proceso_retorno("S1")
         self.rutas_programadas = {}
