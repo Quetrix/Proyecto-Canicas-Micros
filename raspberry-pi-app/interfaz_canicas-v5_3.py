@@ -5,8 +5,7 @@ import time
 import threading
 
 # --- CONFIGURACION SERIAL ---
-# Ajusta esto segun tu entorno (COMx en Windows, /dev/ttyACM0 en Raspberry)
-PORT_NAME = '/dev/ttyACM0'
+PORT_NAME = '/dev/ttyACM0' # Ajustar si es necesario
 BAUD_RATE = 115200
 
 # --- CONFIGURACION FISICA ---
@@ -20,7 +19,7 @@ CALIB_FINE_V = int(STEPS_V / 8)
 class MarbleInterfaceFinal:
     def __init__(self, root):
         self.root = root
-        self.root.title("SISTEMA DE CONTROL V5.2 - CALIBRACION PRO")
+        self.root.title("SISTEMA DE CONTROL V5.3 - STOP & FINE TUNE")
         self.root.geometry("1024x600")
         self.root.configure(bg="#1e293b") 
 
@@ -32,7 +31,10 @@ class MarbleInterfaceFinal:
         self.columna_virtual_destino = 1 
         
         self.rutas_programadas = {} 
-        self.contador_estanon = 0
+        self.contador_canicas = 0 # Renombrado
+        
+        # Bandera para detener secuencias
+        self.stop_emergencia = False
         
         # Mapa Logico
         self.mapa_coords = {
@@ -64,8 +66,23 @@ class MarbleInterfaceFinal:
         except Exception as e:
             print(f"Error Serial: {e}")
 
-    # --- LOGICA DE MOVIMIENTO ---
+    # --- LOGICA STOP EMERGENCIA ---
+    def activar_stop(self):
+        self.stop_emergencia = True
+        print("!!! STOP ACTIVADO !!!")
+        
+        # 1. Enviar comandos de frenado al STM32 (Sobrescribe pasos restantes a 0)
+        self.enviar_comando("H0")
+        self.enviar_comando("V0") # Frena ambos verticales (L y R a 0)
+        self.enviar_comando("S65") # Cierra el servo inmediatamente
+        
+        # 2. Feedback visual
+        messagebox.showwarning("STOP", "PARADA DE EMERGENCIA ACTIVADA.\nMotores detenidos.")
+        
+        # 3. Reiniciar bandera para permitir futuros movimientos
+        self.stop_emergencia = False
 
+    # --- LOGICA DE MOVIMIENTO ---
     def calcular_comando(self, origen, destino):
         r1, c1 = self.mapa_coords[origen]
         
@@ -86,10 +103,10 @@ class MarbleInterfaceFinal:
         diff_r = r2 - r1
         diff_c = c2 - c1
         
-        if diff_r == 1 and diff_c == 0: return f"V-{STEPS_V}"  # Bajar
-        if diff_r == -1 and diff_c == 0: return f"V{STEPS_V}"   # Subir
-        if diff_c == 1 and diff_r == 0: return f"H{STEPS_H}"   # Derecha
-        if diff_c == -1 and diff_r == 0: return f"H-{STEPS_H}"  # Izquierda
+        if diff_r == 1 and diff_c == 0: return f"V-{STEPS_V}"
+        if diff_r == -1 and diff_c == 0: return f"V{STEPS_V}"
+        if diff_c == 1 and diff_r == 0: return f"H{STEPS_H}"
+        if diff_c == -1 and diff_r == 0: return f"H-{STEPS_H}"
         
         if diff_c == 0 and diff_r > 1:
             pasos_total = diff_r * STEPS_V
@@ -114,11 +131,13 @@ class MarbleInterfaceFinal:
         return True, "OK"
 
     # --- THREADING ---
-
     def ejecutar_movimiento_thread(self, destino, callback=None):
+        if self.stop_emergencia: return
         threading.Thread(target=self._proceso_mover, args=(destino, callback)).start()
 
     def _proceso_mover(self, destino, callback):
+        if self.stop_emergencia: return
+        
         cmd = self.calcular_comando(self.posicion_actual, destino)
         if cmd:
             self.enviar_comando(cmd)
@@ -129,23 +148,27 @@ class MarbleInterfaceFinal:
             
             self.posicion_actual = destino
             self.root.after(0, self.actualizar_grid_visual)
-            time.sleep(2.5) 
             
-            if callback:
+            # Espera activa chequeando STOP
+            for _ in range(25): # 2.5 segundos en trozos de 0.1
+                if self.stop_emergencia: return
+                time.sleep(0.1)
+            
+            if callback and not self.stop_emergencia:
                 self.root.after(0, callback)
 
     # --- INTERFAZ UI ---
-
     def setup_ui(self):
         for widget in self.root.winfo_children(): widget.destroy()
 
         header = tk.Frame(self.root, bg="#0f172a", height=60)
         header.pack(fill="x")
-        tk.Label(header, text="CONTROL DE CANICAS V5.2", font=("Arial", 20, "bold"), 
+        tk.Label(header, text="CONTROL DE CANICAS V5.3", font=("Arial", 20, "bold"), 
                  bg="#0f172a", fg="#e2e8f0").pack(side="left", padx=20, pady=10)
         
-        tk.Button(header, text="RESET TOTAL", bg="#dc2626", fg="white", font=("Arial", 10, "bold"),
-                  command=self.iniciar_reset_total).pack(side="right", padx=20, pady=10)
+        # BOTON STOP (Reemplaza Reset)
+        tk.Button(header, text="🛑 STOP TOTAL", bg="#dc2626", fg="white", font=("Arial", 12, "bold"),
+                  command=self.activar_stop).pack(side="right", padx=20, pady=10)
 
         self.main_frame = tk.Frame(self.root, bg="#1e293b")
         self.main_frame.pack(fill="both", expand=True, padx=20, pady=20)
@@ -172,7 +195,7 @@ class MarbleInterfaceFinal:
         tk.Label(top, text=titulo, font=("Arial", 14, "bold"), bg="#334155", fg="#facc15").pack(side="left", padx=10)
         tk.Button(top, text="MENU", bg="#64748b", fg="white", command=self.mostrar_menu_principal).pack(side="right", padx=10, pady=5)
 
-        self.panel_izq = tk.Frame(self.main_frame, bg="#1e293b", width=500) # Mas ancho para los controles
+        self.panel_izq = tk.Frame(self.main_frame, bg="#1e293b", width=550)
         self.panel_izq.pack(side="left", fill="y", padx=10)
         
         if mostrar_grid:
@@ -182,24 +205,24 @@ class MarbleInterfaceFinal:
         else:
             self.panel_der = None 
 
-        self.lbl_estanon = tk.Label(self.panel_izq, text=f"Estanon: {self.contador_estanon}", 
+        # ETIQUETA CANICAS ACTUALIZADA
+        self.lbl_canicas = tk.Label(self.panel_izq, text=f"Canicas: {self.contador_canicas}", 
                                     font=("Arial", 16, "bold"), bg="#1e293b", fg="#facc15")
-        self.lbl_estanon.pack(side="bottom", pady=20)
+        self.lbl_canicas.pack(side="bottom", pady=20)
 
     # --- MODO 3: CALIBRACION AVANZADA ---
-
     def iniciar_modo_calibracion(self):
         self.construir_pantalla_base("CALIBRACION Y MANTENIMIENTO", mostrar_grid=False)
         
         # --- 1. Control Servo ---
-        tk.Label(self.panel_izq, text="CONTROL SERVO (VOLCADO)", bg="#1e293b", fg="#fbbf24", font=("Arial", 10, "bold")).pack(pady=(10,5))
+        tk.Label(self.panel_izq, text="CONTROL SERVO", bg="#1e293b", fg="#fbbf24", font=("Arial", 10, "bold")).pack(pady=(10,5))
         frame_servo = tk.Frame(self.panel_izq, bg="#1e293b")
         frame_servo.pack()
-        tk.Button(frame_servo, text="ABRIR (25°)", command=lambda: self.enviar_comando("S25"), bg="#d97706", fg="white", width=12).pack(side="left", padx=5)
-        tk.Button(frame_servo, text="CERRAR (65°)", command=lambda: self.enviar_comando("S65"), bg="#059669", fg="white", width=12).pack(side="left", padx=5)
+        tk.Button(frame_servo, text="ABRIR", command=lambda: self.enviar_comando("S25"), bg="#d97706", fg="white", width=10).pack(side="left", padx=5)
+        tk.Button(frame_servo, text="CERRAR", command=lambda: self.enviar_comando("S65"), bg="#059669", fg="white", width=10).pack(side="left", padx=5)
 
-        # --- 2. Movimiento General (1 Nivel Completo) ---
-        tk.Label(self.panel_izq, text="MOVIMIENTO GENERAL (1 NIVEL)", bg="#1e293b", fg="#fbbf24", font=("Arial", 10, "bold")).pack(pady=(20,5))
+        # --- 2. Movimiento General (FULL) ---
+        tk.Label(self.panel_izq, text="MOVIMIENTO GENERAL (1 CELDA)", bg="#1e293b", fg="#fbbf24", font=("Arial", 10, "bold")).pack(pady=(20,5))
         frame_gros = tk.Frame(self.panel_izq, bg="#1e293b")
         frame_gros.pack()
         
@@ -208,34 +231,40 @@ class MarbleInterfaceFinal:
         tk.Button(frame_gros, text="▶", command=lambda: self.mover_calib("H", 1, "FULL"), bg="#475569", fg="white", width=4, height=2).grid(row=1, column=2, padx=5)
         tk.Button(frame_gros, text="▼", command=lambda: self.mover_calib("V", -1, "FULL"), bg="#475569", fg="white", width=4, height=2).grid(row=2, column=1)
 
-        # --- 3. Ajuste Fino (1/8 de Nivel) ---
-        tk.Label(self.panel_izq, text="AJUSTE FINO (1/8 NIVEL) - INDIVIDUAL", bg="#1e293b", fg="#fbbf24", font=("Arial", 10, "bold")).pack(pady=(20,5))
+        # --- 3. Ajuste Fino (1/8) ---
+        tk.Label(self.panel_izq, text="AJUSTE FINO (1/8)", bg="#1e293b", fg="#fbbf24", font=("Arial", 10, "bold")).pack(pady=(20,5))
         frame_fino = tk.Frame(self.panel_izq, bg="#1e293b")
         frame_fino.pack()
         
-        # Columna: M2 (IZQUIERDA FISICA) -> Controla Motor 2 (Comando R)
-        frame_m2 = tk.Frame(frame_fino, bg="#334155", padx=5, pady=5)
-        frame_m2.grid(row=0, column=0, padx=5)
-        tk.Label(frame_m2, text="M2 (IZQ)", bg="#334155", fg="white", font=("Arial", 8, "bold")).pack()
-        tk.Button(frame_m2, text="▲", command=lambda: self.mover_individual("R", 1), bg="#3b82f6", fg="white", width=3).pack(pady=2)
-        tk.Button(frame_m2, text="▼", command=lambda: self.mover_individual("R", -1), bg="#3b82f6", fg="white", width=3).pack(pady=2)
+        # Columna 1: M2 (IZQ)
+        f_m2 = tk.Frame(frame_fino, bg="#334155", padx=5, pady=5)
+        f_m2.grid(row=0, column=0, padx=5)
+        tk.Label(f_m2, text="M2(IZQ)", bg="#334155", fg="white", font=("Arial", 8)).pack()
+        tk.Button(f_m2, text="▲", command=lambda: self.mover_individual("R", 1), bg="#3b82f6", fg="white").pack(pady=2)
+        tk.Button(f_m2, text="▼", command=lambda: self.mover_individual("R", -1), bg="#3b82f6", fg="white").pack(pady=2)
 
-        # Columna: Horizontal Fino
-        frame_h = tk.Frame(frame_fino, bg="#334155", padx=5, pady=5)
-        frame_h.grid(row=0, column=1, padx=5)
-        tk.Label(frame_h, text="HORIZ", bg="#334155", fg="white", font=("Arial", 8, "bold")).pack()
-        tk.Button(frame_h, text="◀", command=lambda: self.mover_calib("H", -1, "FINE"), bg="#8b5cf6", fg="white", width=3).pack(pady=2)
-        tk.Button(frame_h, text="▶", command=lambda: self.mover_calib("H", 1, "FINE"), bg="#8b5cf6", fg="white", width=3).pack(pady=2)
+        # Columna 2: AMBOS VERTICALES (NUEVO)
+        f_v = tk.Frame(frame_fino, bg="#475569", padx=5, pady=5)
+        f_v.grid(row=0, column=1, padx=5)
+        tk.Label(f_v, text="VERT(2)", bg="#475569", fg="white", font=("Arial", 8, "bold")).pack()
+        tk.Button(f_v, text="▲▲", command=lambda: self.mover_calib("V", 1, "FINE"), bg="#8b5cf6", fg="white").pack(pady=2)
+        tk.Button(f_v, text="▼▼", command=lambda: self.mover_calib("V", -1, "FINE"), bg="#8b5cf6", fg="white").pack(pady=2)
 
-        # Columna: M1 (DERECHA FISICA) -> Controla Motor 1 (Comando L)
-        frame_m1 = tk.Frame(frame_fino, bg="#334155", padx=5, pady=5)
-        frame_m1.grid(row=0, column=2, padx=5)
-        tk.Label(frame_m1, text="M1 (DER)", bg="#334155", fg="white", font=("Arial", 8, "bold")).pack()
-        tk.Button(frame_m1, text="▲", command=lambda: self.mover_individual("L", 1), bg="#3b82f6", fg="white", width=3).pack(pady=2)
-        tk.Button(frame_m1, text="▼", command=lambda: self.mover_individual("L", -1), bg="#3b82f6", fg="white", width=3).pack(pady=2)
+        # Columna 3: HORIZONTAL
+        f_h = tk.Frame(frame_fino, bg="#334155", padx=5, pady=5)
+        f_h.grid(row=0, column=2, padx=5)
+        tk.Label(f_h, text="HORIZ", bg="#334155", fg="white", font=("Arial", 8)).pack()
+        tk.Button(f_h, text="◀", command=lambda: self.mover_calib("H", -1, "FINE"), bg="#3b82f6", fg="white").pack(pady=2)
+        tk.Button(f_h, text="▶", command=lambda: self.mover_calib("H", 1, "FINE"), bg="#3b82f6", fg="white").pack(pady=2)
 
-        # --- Confirmacion ---
-        tk.Button(self.panel_izq, text="CONFIRMAR POSICION S1", bg="#10b981", fg="white", font=("Arial", 11, "bold"),
+        # Columna 4: M1 (DER)
+        f_m1 = tk.Frame(frame_fino, bg="#334155", padx=5, pady=5)
+        f_m1.grid(row=0, column=3, padx=5)
+        tk.Label(f_m1, text="M1(DER)", bg="#334155", fg="white", font=("Arial", 8)).pack()
+        tk.Button(f_m1, text="▲", command=lambda: self.mover_individual("L", 1), bg="#3b82f6", fg="white").pack(pady=2)
+        tk.Button(f_m1, text="▼", command=lambda: self.mover_individual("L", -1), bg="#3b82f6", fg="white").pack(pady=2)
+
+        tk.Button(self.panel_izq, text="CONFIRMAR POSICION S1", bg="#10b981", fg="white", 
                   command=self.confirmar_s1).pack(pady=20, fill="x")
 
     def mover_calib(self, eje, dir, tipo):
@@ -247,8 +276,6 @@ class MarbleInterfaceFinal:
         self.enviar_comando(f"{eje}{signo}{pasos}")
 
     def mover_individual(self, motor, dir):
-        # M1 (DER) -> Envia 'L' (Motor 1)
-        # M2 (IZQ) -> Envia 'R' (Motor 2)
         pasos = CALIB_FINE_V
         signo = "" if dir > 0 else "-"
         self.enviar_comando(f"{motor}{signo}{pasos}")
@@ -260,7 +287,6 @@ class MarbleInterfaceFinal:
             messagebox.showinfo("Listo", "Sistema calibrado en S1")
 
     # --- MODO 1: MANUAL ---
-
     def iniciar_modo_manual(self):
         self.construir_pantalla_base("MODO MANUAL")
         
@@ -280,6 +306,7 @@ class MarbleInterfaceFinal:
                       bg="#0ea5e9", fg="white", width=5).pack(side="left", padx=2)
 
     def accion_manual_click(self, direccion):
+        if self.stop_emergencia: return
         r, c = self.mapa_coords[self.posicion_actual]
         if self.posicion_actual == "Destino":
             r = 4
@@ -304,25 +331,26 @@ class MarbleInterfaceFinal:
             messagebox.showwarning("Error", "No existe zona en esa direccion")
 
     def check_fin_recorrido_manual(self):
-        if self.posicion_actual == "Destino":
+        if self.posicion_actual == "Destino" and not self.stop_emergencia:
             self.rutina_volcado_y_retorno()
 
     def rutina_volcado_y_retorno(self):
+        if self.stop_emergencia: return
         messagebox.showinfo("Llegada", "Canica en Destino.\nEl sistema volcará la canasta ahora.")
         
-        print("Volcando canasta...")
+        if self.stop_emergencia: return
         self.enviar_comando("S25")
-        time.sleep(1.5)             
+        time.sleep(1.5)
+        if self.stop_emergencia: return
         self.enviar_comando("S65")
         time.sleep(1.0)             
         
-        self.contador_estanon += 1
-        self.lbl_estanon.config(text=f"Estanon: {self.contador_estanon}")
-        
-        self.iniciar_retorno_thread("S1")
+        if not self.stop_emergencia:
+            self.contador_canicas += 1
+            self.lbl_canicas.config(text=f"Canicas: {self.contador_canicas}")
+            self.iniciar_retorno_thread("S1")
 
     # --- MODO 2: PROGRAMADO ---
-
     def iniciar_modo_programado(self):
         self.ruta_temp = []
         self.construir_pantalla_base("PROGRAMACION", mostrar_grid=True)
@@ -331,7 +359,6 @@ class MarbleInterfaceFinal:
         self.frame_lista_rutas.pack(side="right", fill="y", padx=5)
         tk.Label(self.frame_lista_rutas, text="RUTAS", bg="#1e293b", fg="white", font=("Arial",10,"bold")).pack()
         self.refrescar_lista_rutas()
-
         self.fase_programacion_ui()
 
     def refrescar_lista_rutas(self):
@@ -344,14 +371,13 @@ class MarbleInterfaceFinal:
             
             txt_camino = "->".join(map(str, camino))
             lbl_text = f"{k}: {txt_camino}"
-            
             tk.Label(f, text=lbl_text, bg="#334155", fg="#facc15", anchor="w", font=("Arial", 8)).pack(side="left", fill="x", expand=True)
             tk.Button(f, text="X", bg="#ef4444", fg="white", width=2,
                       command=lambda key=k: self.borrar_ruta(key)).pack(side="right")
 
     def fase_programacion_ui(self):
         for w in self.panel_izq.winfo_children(): 
-            if w != self.lbl_estanon: w.destroy()
+            if w != self.lbl_canicas: w.destroy()
 
         tk.Label(self.panel_izq, text="CREAR RUTA", font=("Arial", 12, "bold"), bg="#1e293b", fg="#fbbf24").pack(pady=5)
         
@@ -416,28 +442,31 @@ class MarbleInterfaceFinal:
         self.refrescar_lista_rutas()
         self.reset_ruta_builder()
 
-    # --- EJECUCION SECUENCIA ---
-
     def iniciar_secuencia_thread(self):
         if not self.rutas_programadas:
             messagebox.showwarning("Vacio", "No hay rutas programadas")
             return
         for w in self.panel_izq.winfo_children(): 
             if isinstance(w, tk.Button): w.config(state="disabled")
+        self.stop_emergencia = False
         threading.Thread(target=self._proceso_secuencia).start()
 
     def _proceso_secuencia(self):
         for inicio, camino in self.rutas_programadas.items():
+            if self.stop_emergencia: break
             
             self._proceso_retorno(inicio)
             
+            if self.stop_emergencia: break
             evt = threading.Event()
             self.root.after(0, lambda: self._show_info_wait("Carga", f"Coloque canica en {inicio}", evt))
             evt.wait()
 
             for paso in camino:
+                if self.stop_emergencia: break
                 self._proceso_mover(paso, None)
             
+            if self.stop_emergencia: break
             self.root.after(0, lambda: messagebox.showinfo("Llegada", "Volcando canica..."))
             time.sleep(1.0)
             self.enviar_comando("S25")
@@ -445,23 +474,27 @@ class MarbleInterfaceFinal:
             self.enviar_comando("S65")
             time.sleep(1.0)
             
-            self.contador_estanon += 1
-            self.root.after(0, lambda: self.lbl_estanon.config(text=f"Estanon: {self.contador_estanon}"))
+            if not self.stop_emergencia:
+                self.contador_canicas += 1
+                self.root.after(0, lambda: self.lbl_canicas.config(text=f"Canicas: {self.contador_canicas}"))
 
-        self._proceso_retorno("S1")
-        self.root.after(0, lambda: messagebox.showinfo("Fin", "Secuencia Terminada"))
+        if not self.stop_emergencia:
+            self._proceso_retorno("S1")
+            self.root.after(0, lambda: messagebox.showinfo("Fin", "Secuencia Terminada"))
+        
         self.root.after(0, self.fase_programacion_ui)
 
     def _show_info_wait(self, title, msg, event):
-        messagebox.showinfo(title, msg)
+        if not self.stop_emergencia:
+            messagebox.showinfo(title, msg)
         event.set()
 
-    # --- RETORNO Y RESET ---
-
     def iniciar_retorno_thread(self, destino):
+        if self.stop_emergencia: return
         threading.Thread(target=self._proceso_retorno, args=(destino,)).start()
 
     def _proceso_retorno(self, destino_final):
+        if self.stop_emergencia: return
         actual = self.posicion_actual
         if actual == destino_final: return
 
@@ -480,6 +513,7 @@ class MarbleInterfaceFinal:
         _, c_dest = self.mapa_coords[destino_final]
 
         while c_curr != c_dest:
+            if self.stop_emergencia: return
             direction = 1 if c_dest > c_curr else -1
             cmd = f"H{STEPS_H}" if direction == 1 else f"H-{STEPS_H}"
             self.enviar_comando(cmd)
@@ -488,6 +522,7 @@ class MarbleInterfaceFinal:
         
         r_curr, _ = self.mapa_coords[actual]
         while r_curr > 0:
+            if self.stop_emergencia: return
             self.enviar_comando(f"V{STEPS_V}")
             time.sleep(2.5)
             r_curr -= 1
@@ -495,30 +530,7 @@ class MarbleInterfaceFinal:
         self.posicion_actual = destino_final
         self.root.after(0, self.actualizar_grid_visual)
 
-    def iniciar_reset_total(self):
-        threading.Thread(target=self._proceso_reset).start()
-
-    def _proceso_reset(self):
-        r_actual, _ = self.mapa_coords[self.posicion_actual] if self.posicion_actual != "Destino" else (4,1)
-        filas_a_bajar = 4 - r_actual
-        
-        if filas_a_bajar > 0:
-            pasos_total = filas_a_bajar * STEPS_V
-            self.enviar_comando(f"V-{pasos_total}")
-            self.posicion_actual = "Destino"
-            self.root.after(0, self.actualizar_grid_visual)
-            time.sleep(2.0 * filas_a_bajar) 
-            
-            self.enviar_comando("S25")
-            time.sleep(1.5)
-            self.enviar_comando("S65")
-
-        self._proceso_retorno("S1")
-        self.rutas_programadas = {}
-        self.root.after(0, self.mostrar_menu_principal)
-
     # --- VISUALIZACION ---
-
     def construir_grid_visual(self):
         self.cells = {}
         for w in self.panel_der.winfo_children(): 
