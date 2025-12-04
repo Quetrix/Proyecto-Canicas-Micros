@@ -5,7 +5,7 @@ import time
 import threading
 
 # --- CONFIGURACION SERIAL ---
-PORT_NAME = '/dev/ttyACM0' # Ajustar si es necesario
+PORT_NAME = '/dev/ttyACM0' 
 BAUD_RATE = 115200
 
 # --- CONFIGURACION FISICA ---
@@ -16,10 +16,17 @@ STEPS_V = 1408
 CALIB_FINE_H = int(STEPS_H / 8)
 CALIB_FINE_V = int(STEPS_V / 8)
 
+# --- TIEMPOS DE ESPERA (Segundos) ---
+# Como el motor va lento (2000-1), aumentamos los tiempos de espera
+# Ajusta estos valores si sientes que el sistema espera demasiado o muy poco.
+TIME_MOVE_H = 4.5  
+TIME_MOVE_V = 5.0 
+TIME_SERVO  = 1.5
+
 class MarbleInterfaceFinal:
     def __init__(self, root):
         self.root = root
-        self.root.title("SISTEMA DE CONTROL V5.3 - STOP & FINE TUNE")
+        self.root.title("SISTEMA DE CONTROL V5.4 - RETORNO POR IZQUIERDA")
         self.root.geometry("1024x600")
         self.root.configure(bg="#1e293b") 
 
@@ -31,7 +38,7 @@ class MarbleInterfaceFinal:
         self.columna_virtual_destino = 1 
         
         self.rutas_programadas = {} 
-        self.contador_canicas = 0 # Renombrado
+        self.contador_canicas = 0 
         
         # Bandera para detener secuencias
         self.stop_emergencia = False
@@ -71,15 +78,11 @@ class MarbleInterfaceFinal:
         self.stop_emergencia = True
         print("!!! STOP ACTIVADO !!!")
         
-        # 1. Enviar comandos de frenado al STM32 (Sobrescribe pasos restantes a 0)
         self.enviar_comando("H0")
-        self.enviar_comando("V0") # Frena ambos verticales (L y R a 0)
-        self.enviar_comando("S65") # Cierra el servo inmediatamente
+        self.enviar_comando("V0") 
+        self.enviar_comando("S65") 
         
-        # 2. Feedback visual
         messagebox.showwarning("STOP", "PARADA DE EMERGENCIA ACTIVADA.\nMotores detenidos.")
-        
-        # 3. Reiniciar bandera para permitir futuros movimientos
         self.stop_emergencia = False
 
     # --- LOGICA DE MOVIMIENTO ---
@@ -142,6 +145,12 @@ class MarbleInterfaceFinal:
         if cmd:
             self.enviar_comando(cmd)
             
+            # Determinar tiempo de espera segun el eje
+            wait_time = TIME_MOVE_V if "V" in cmd else TIME_MOVE_H
+            if "V-" in cmd and int(cmd.split('-')[1]) > STEPS_V: 
+                 # Si baja varios pisos de golpe, dar mas tiempo
+                 wait_time = wait_time * 2.5 
+
             if destino == "Destino":
                 _, c_origen = self.mapa_coords[self.posicion_actual]
                 self.columna_virtual_destino = c_origen
@@ -150,7 +159,8 @@ class MarbleInterfaceFinal:
             self.root.after(0, self.actualizar_grid_visual)
             
             # Espera activa chequeando STOP
-            for _ in range(25): # 2.5 segundos en trozos de 0.1
+            steps_wait = int(wait_time * 10)
+            for _ in range(steps_wait): 
                 if self.stop_emergencia: return
                 time.sleep(0.1)
             
@@ -163,11 +173,10 @@ class MarbleInterfaceFinal:
 
         header = tk.Frame(self.root, bg="#0f172a", height=60)
         header.pack(fill="x")
-        tk.Label(header, text="CONTROL DE CANICAS V5.3", font=("Arial", 20, "bold"), 
+        tk.Label(header, text="CONTROL DE CANICAS V5.4", font=("Arial", 20, "bold"), 
                  bg="#0f172a", fg="#e2e8f0").pack(side="left", padx=20, pady=10)
         
-        # BOTON STOP (Reemplaza Reset)
-        tk.Button(header, text="🛑 STOP TOTAL", bg="#dc2626", fg="white", font=("Arial", 12, "bold"),
+        tk.Button(header, text="STOP TOTAL", bg="#dc2626", fg="white", font=("Arial", 12, "bold"),
                   command=self.activar_stop).pack(side="right", padx=20, pady=10)
 
         self.main_frame = tk.Frame(self.root, bg="#1e293b")
@@ -205,7 +214,6 @@ class MarbleInterfaceFinal:
         else:
             self.panel_der = None 
 
-        # ETIQUETA CANICAS ACTUALIZADA
         self.lbl_canicas = tk.Label(self.panel_izq, text=f"Canicas: {self.contador_canicas}", 
                                     font=("Arial", 16, "bold"), bg="#1e293b", fg="#facc15")
         self.lbl_canicas.pack(side="bottom", pady=20)
@@ -214,14 +222,14 @@ class MarbleInterfaceFinal:
     def iniciar_modo_calibracion(self):
         self.construir_pantalla_base("CALIBRACION Y MANTENIMIENTO", mostrar_grid=False)
         
-        # --- 1. Control Servo ---
+        # 1. Servo
         tk.Label(self.panel_izq, text="CONTROL SERVO", bg="#1e293b", fg="#fbbf24", font=("Arial", 10, "bold")).pack(pady=(10,5))
         frame_servo = tk.Frame(self.panel_izq, bg="#1e293b")
         frame_servo.pack()
         tk.Button(frame_servo, text="ABRIR", command=lambda: self.enviar_comando("S25"), bg="#d97706", fg="white", width=10).pack(side="left", padx=5)
         tk.Button(frame_servo, text="CERRAR", command=lambda: self.enviar_comando("S65"), bg="#059669", fg="white", width=10).pack(side="left", padx=5)
 
-        # --- 2. Movimiento General (FULL) ---
+        # 2. General
         tk.Label(self.panel_izq, text="MOVIMIENTO GENERAL (1 CELDA)", bg="#1e293b", fg="#fbbf24", font=("Arial", 10, "bold")).pack(pady=(20,5))
         frame_gros = tk.Frame(self.panel_izq, bg="#1e293b")
         frame_gros.pack()
@@ -231,33 +239,33 @@ class MarbleInterfaceFinal:
         tk.Button(frame_gros, text="▶", command=lambda: self.mover_calib("H", 1, "FULL"), bg="#475569", fg="white", width=4, height=2).grid(row=1, column=2, padx=5)
         tk.Button(frame_gros, text="▼", command=lambda: self.mover_calib("V", -1, "FULL"), bg="#475569", fg="white", width=4, height=2).grid(row=2, column=1)
 
-        # --- 3. Ajuste Fino (1/8) ---
+        # 3. Fino
         tk.Label(self.panel_izq, text="AJUSTE FINO (1/8)", bg="#1e293b", fg="#fbbf24", font=("Arial", 10, "bold")).pack(pady=(20,5))
         frame_fino = tk.Frame(self.panel_izq, bg="#1e293b")
         frame_fino.pack()
         
-        # Columna 1: M2 (IZQ)
+        # M2 (IZQ)
         f_m2 = tk.Frame(frame_fino, bg="#334155", padx=5, pady=5)
         f_m2.grid(row=0, column=0, padx=5)
         tk.Label(f_m2, text="M2(IZQ)", bg="#334155", fg="white", font=("Arial", 8)).pack()
         tk.Button(f_m2, text="▲", command=lambda: self.mover_individual("R", 1), bg="#3b82f6", fg="white").pack(pady=2)
         tk.Button(f_m2, text="▼", command=lambda: self.mover_individual("R", -1), bg="#3b82f6", fg="white").pack(pady=2)
 
-        # Columna 2: AMBOS VERTICALES (NUEVO)
+        # AMBOS VERTICALES
         f_v = tk.Frame(frame_fino, bg="#475569", padx=5, pady=5)
         f_v.grid(row=0, column=1, padx=5)
         tk.Label(f_v, text="VERT(2)", bg="#475569", fg="white", font=("Arial", 8, "bold")).pack()
         tk.Button(f_v, text="▲▲", command=lambda: self.mover_calib("V", 1, "FINE"), bg="#8b5cf6", fg="white").pack(pady=2)
         tk.Button(f_v, text="▼▼", command=lambda: self.mover_calib("V", -1, "FINE"), bg="#8b5cf6", fg="white").pack(pady=2)
 
-        # Columna 3: HORIZONTAL
+        # HORIZONTAL
         f_h = tk.Frame(frame_fino, bg="#334155", padx=5, pady=5)
         f_h.grid(row=0, column=2, padx=5)
         tk.Label(f_h, text="HORIZ", bg="#334155", fg="white", font=("Arial", 8)).pack()
         tk.Button(f_h, text="◀", command=lambda: self.mover_calib("H", -1, "FINE"), bg="#3b82f6", fg="white").pack(pady=2)
         tk.Button(f_h, text="▶", command=lambda: self.mover_calib("H", 1, "FINE"), bg="#3b82f6", fg="white").pack(pady=2)
 
-        # Columna 4: M1 (DER)
+        # M1 (DER)
         f_m1 = tk.Frame(frame_fino, bg="#334155", padx=5, pady=5)
         f_m1.grid(row=0, column=3, padx=5)
         tk.Label(f_m1, text="M1(DER)", bg="#334155", fg="white", font=("Arial", 8)).pack()
@@ -340,7 +348,7 @@ class MarbleInterfaceFinal:
         
         if self.stop_emergencia: return
         self.enviar_comando("S25")
-        time.sleep(1.5)
+        time.sleep(TIME_SERVO)
         if self.stop_emergencia: return
         self.enviar_comando("S65")
         time.sleep(1.0)             
@@ -348,6 +356,7 @@ class MarbleInterfaceFinal:
         if not self.stop_emergencia:
             self.contador_canicas += 1
             self.lbl_canicas.config(text=f"Canicas: {self.contador_canicas}")
+            # Volver por defecto a S1 tras descargar en modo manual
             self.iniciar_retorno_thread("S1")
 
     # --- MODO 2: PROGRAMADO ---
@@ -455,6 +464,7 @@ class MarbleInterfaceFinal:
         for inicio, camino in self.rutas_programadas.items():
             if self.stop_emergencia: break
             
+            # --- FASE 1: IR AL INICIO ---
             self._proceso_retorno(inicio)
             
             if self.stop_emergencia: break
@@ -462,15 +472,17 @@ class MarbleInterfaceFinal:
             self.root.after(0, lambda: self._show_info_wait("Carga", f"Coloque canica en {inicio}", evt))
             evt.wait()
 
+            # --- FASE 2: EJECUTAR RUTA ---
             for paso in camino:
                 if self.stop_emergencia: break
                 self._proceso_mover(paso, None)
             
+            # --- FASE 3: DESCARGA ---
             if self.stop_emergencia: break
             self.root.after(0, lambda: messagebox.showinfo("Llegada", "Volcando canica..."))
             time.sleep(1.0)
             self.enviar_comando("S25")
-            time.sleep(1.5)
+            time.sleep(TIME_SERVO)
             self.enviar_comando("S65")
             time.sleep(1.0)
             
@@ -479,6 +491,7 @@ class MarbleInterfaceFinal:
                 self.root.after(0, lambda: self.lbl_canicas.config(text=f"Canicas: {self.contador_canicas}"))
 
         if not self.stop_emergencia:
+            # Al terminar todo, volver a S1 para descansar
             self._proceso_retorno("S1")
             self.root.after(0, lambda: messagebox.showinfo("Fin", "Secuencia Terminada"))
         
@@ -489,44 +502,71 @@ class MarbleInterfaceFinal:
             messagebox.showinfo(title, msg)
         event.set()
 
+    # --- NUEVA LOGICA DE RETORNO (V5.4) ---
     def iniciar_retorno_thread(self, destino):
         if self.stop_emergencia: return
         threading.Thread(target=self._proceso_retorno, args=(destino,)).start()
 
     def _proceso_retorno(self, destino_final):
+        # Esta funcion asegura que el retorno SIEMPRE ocurra por la izquierda (S1)
+        # para aliviar la carga del motor derecho.
         if self.stop_emergencia: return
         actual = self.posicion_actual
+        
+        # Si ya estamos ahi, salir
         if actual == destino_final: return
 
+        # 1. Si estamos en Destino, moverse a la IZQUIERDA (Col 0) y luego SUBIR a S1
         if actual == "Destino":
-            col = self.columna_virtual_destino
-            targets = {0: 7, 1: 8, 2: 9}
-            target_up = targets.get(col, 8)
+            col_virtual = self.columna_virtual_destino # Donde cayo la canasta (0, 1 o 2)
             
-            self.enviar_comando(f"V{STEPS_V}")
-            time.sleep(2.5)
-            self.posicion_actual = target_up
+            # Queremos ir a Col 0 (Izquierda total)
+            # Si estamos en 1 (Centro) -> Mover 1 izq
+            # Si estamos en 2 (Der) -> Mover 2 izq
+            pasos_a_izq = col_virtual - 0
+            
+            if pasos_a_izq > 0:
+                # Moverse a la izquierda
+                cmd = f"H-{STEPS_H * pasos_a_izq}" # H negativo es izquierda
+                # Nota: Tu logica serial espera pasos de 1 celda? O totales?
+                # Tu logica `calcular_comando` envia STEPS_H por celda.
+                # Aqui simplificamos: movemos celda por celda para usar sleeps correctos
+                
+                for _ in range(pasos_a_izq):
+                    self.enviar_comando(f"H-{STEPS_H}")
+                    time.sleep(TIME_MOVE_H)
+            
+            # Ahora estamos (teoricamente) en columna 0, abajo del todo (Nivel 4)
+            # Subir hasta S1 (Nivel 0) -> Son 4 subidas
+            for _ in range(4):
+                self.enviar_comando(f"V{STEPS_V}") # V positivo subir
+                time.sleep(TIME_MOVE_V)
+            
+            self.posicion_actual = "S1"
             self.root.after(0, self.actualizar_grid_visual)
-            actual = target_up
 
-        _, c_curr = self.mapa_coords[actual]
+        # 2. Ahora que estamos en S1 (garantizado), movernos al destino final (S2 o S3)
+        # Si el destino es S1, ya terminamos.
+        
+        _, c_curr = self.mapa_coords[self.posicion_actual] # Deberia ser (0,0)
         _, c_dest = self.mapa_coords[destino_final]
-
+        
+        # Moverse horizontalmente hasta la columna deseada
         while c_curr != c_dest:
             if self.stop_emergencia: return
-            direction = 1 if c_dest > c_curr else -1
+            direction = 1 if c_dest > c_curr else -1 # 1=Derecha
             cmd = f"H{STEPS_H}" if direction == 1 else f"H-{STEPS_H}"
             self.enviar_comando(cmd)
-            time.sleep(2.5)
+            time.sleep(TIME_MOVE_H)
             c_curr += direction
-        
-        r_curr, _ = self.mapa_coords[actual]
-        while r_curr > 0:
-            if self.stop_emergencia: return
-            self.enviar_comando(f"V{STEPS_V}")
-            time.sleep(2.5)
-            r_curr -= 1
-        
+            
+            # Actualizar visualmente paso a paso
+            temp_key = "S1"
+            if c_curr == 1: temp_key = "S2"
+            if c_curr == 2: temp_key = "S3"
+            self.posicion_actual = temp_key
+            self.root.after(0, self.actualizar_grid_visual)
+
         self.posicion_actual = destino_final
         self.root.after(0, self.actualizar_grid_visual)
 
