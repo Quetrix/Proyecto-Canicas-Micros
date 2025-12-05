@@ -23,7 +23,8 @@
 /* USER CODE BEGIN Includes */
 #include <string.h>
 #include <stdlib.h>
-#include <stdio.h> // Opcional, para sprintf si se quiere responder
+#include <stdio.h>
+#include <stdbool.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -362,36 +363,6 @@ int main(void)
     /* USER CODE BEGIN WHILE */
     while (1)
     {
-        // ====================== UART: COMANDOS DESDE RASPBERRY ======================
-        if (comando_listo)
-        {
-            comando_listo = 0; // Bajar bandera para no repetir
-
-            char cmd = rx_buffer[0];
-            int32_t pasos = atoi((char*)&rx_buffer[1]);
-
-            if (cmd == 'H' || cmd == 'h')      // Comando Horizontal
-            {
-                Mover_Horizontal(pasos);
-            }
-            else if (cmd == 'V' || cmd == 'v') // Comando Vertical (ambos)
-            {
-                Mover_Vertical_Sync(pasos);
-            }
-            else if (cmd == 'L' || cmd == 'l') // Solo vertical izquierdo
-            {
-                Mover_Vertical_L(pasos);
-            }
-            else if (cmd == 'R' || cmd == 'r') // Solo vertical derecho
-            {
-                Mover_Vertical_R(pasos);
-            }
-            else if (cmd == 'S' || cmd == 's') // Servo
-            {
-                Mover_Servo((uint16_t)pasos);
-            }
-        }
-
         // ====================== ULTRASONIDO: MEDICIÓN Y CONTEO ======================
         uint32_t ahora = HAL_GetTick();
 
@@ -450,20 +421,12 @@ int main(void)
             {
                 canicaDetectada2 = false;
             }
-
-            // (Opcional) Enviar estado periódico aunque no haya eventos
-            /*
-            if (ahora - tiempoUltimoEstado >= intervaloEstado)
-            {
-                tiempoUltimoEstado = ahora;
-                EnviarEventoCanica("STATE"); // Si quisieras manejar este tipo en la Raspi
-            }
-            */
         }
 
-        // No usamos delays aquí; los motores siguen avanzando por interrupción de TIM2
+        // No usar delays aquí; los motores se mueven por TIM2 interrupt
     }
     /* USER CODE END WHILE */
+
 
 
     /* USER CODE BEGIN 3 */
@@ -803,22 +766,36 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
       {
           Mover_Vertical_Sync(valor); // Mueve ambos
       }
-      // NUEVO: Solo Izquierda
+      // Solo Izquierda
       else if (cmd_char == 'L' || cmd_char == 'l')
       {
           Mover_Vertical_L(valor);
       }
-      // NUEVO: Solo Derecha
+      // Solo Derecha
       else if (cmd_char == 'R' || cmd_char == 'r')
       {
           Mover_Vertical_R(valor);
       }
 
-      // --- NUEVO: CONTROL DE SERVO ---
+      // CONTROL DE SERVO
       else if (cmd_char == 'S' || cmd_char == 's')
       {
           Mover_Servo(valor);
       }
+
+      // --- RESET DE CONTADORES DE CANICAS ---
+       else if (cmd_char == 'C' || cmd_char == 'c')
+       {
+           canicasEntrada  = 0;
+           canicasSalida   = 0;
+           canicasActuales = 0;
+           canicaDetectada1 = false;
+           canicaDetectada2 = false;
+
+           // Opcional: notificar a la Raspberry que se ha reseteado
+           const char *msg = "#RST\n";
+           HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), 50);
+       }
     }
     // CASO 2: Buffer lleno (Seguridad)
     else if (rx_index >= RX_BUFFER_SIZE - 1)
